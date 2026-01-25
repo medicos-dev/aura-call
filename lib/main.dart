@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import 'app_theme.dart';
 import 'screens/splash_screen.dart';
+import 'services/cleanup_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,6 +27,9 @@ void main() async {
 
   // Generate or retrieve user call ID
   await _initializeCallId();
+
+  // Start the cleanup service (runs every 20 minutes)
+  CleanupService().start();
 
   runApp(const AuraCallApp());
 }

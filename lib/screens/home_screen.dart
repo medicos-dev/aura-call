@@ -1,15 +1,13 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../app_theme.dart';
 import '../services/call_service.dart';
 import '../services/presence_service.dart';
-import '../services/sound_service.dart';
 import 'call_overlay.dart';
-import 'add_person_sheet.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -80,7 +78,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     // Initialize presence
     if (_myCallId != null) {
       _presenceService = PresenceService(
-        supabase: _callService._supabase,
+        supabase: Supabase.instance.client,
         myCallId: _myCallId!,
         onOnlineUsersUpdated: (users) {
           setState(() {
