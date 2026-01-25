@@ -1,13 +1,15 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
-import '../app_theme.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../services/background_handler.dart';
 import '../services/call_service.dart';
 import '../services/presence_service.dart';
+import '../services/sound_service.dart';
 import 'call_overlay.dart';
+import 'profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -16,657 +18,646 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> {
+  final _supabase = Supabase.instance.client;
   final TextEditingController _callIdController = TextEditingController();
-  final FocusNode _focusNode = FocusNode();
 
-  String? _myCallId;
-  List<String> _onlineUsers = [];
-  bool _isLoading = false;
+  String _myCallId = '';
+  String _userName = '';
+  String _avatarUrl = '';
+  List<String> _contactIds = [];
+  List<String> _onlineUserIds = [];
+  bool _isLoading = true;
 
   late CallService _callService;
-  PresenceService? _presenceService;
-
-  // Incoming call state
-  String? _incomingCallerId;
-  String? _incomingCallerName;
-  bool _showIncomingCall = false;
-
-  // Animation
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
 
   @override
   void initState() {
     super.initState();
-    _initializeServices();
-    _requestPermissions();
-
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat(reverse: true);
-
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.15).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-  }
-
-  Future<void> _initializeServices() async {
-    final prefs = await SharedPreferences.getInstance();
-    _myCallId = prefs.getString('call_id');
-
     _callService = CallService();
-    await _callService.initialize();
-
-    // Set up incoming call handler
-    _callService.onIncomingCall = (senderId, senderName) {
-      setState(() {
-        _incomingCallerId = senderId;
-        _incomingCallerName = senderName;
-        _showIncomingCall = true;
-      });
-      // Bell sound plays automatically in CallService on receiver side
-    };
-
-    _callService.onCallStateChanged = (state) {
-      if (state == CallState.connected) {
-        _navigateToCall();
-      }
-    };
-
-    // Initialize presence
-    if (_myCallId != null) {
-      _presenceService = PresenceService(
-        supabase: Supabase.instance.client,
-        myCallId: _myCallId!,
-        onOnlineUsersUpdated: (users) {
-          setState(() {
-            _onlineUsers = users.where((id) => id != _myCallId).toList();
-          });
-        },
-      );
-      _presenceService!.connect();
-    }
-
-    setState(() {});
-  }
-
-  Future<void> _requestPermissions() async {
-    await [Permission.camera, Permission.microphone].request();
-  }
-
-  void _navigateToCall() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => CallOverlay(callService: _callService),
-      ),
-    );
-  }
-
-  Future<void> _startCall({required bool isVideo}) async {
-    final callId = _callIdController.text.trim().toUpperCase();
-
-    if (callId.isEmpty) {
-      _showSnackBar('Please enter a call ID');
-      return;
-    }
-
-    if (callId.length != 6) {
-      _showSnackBar('Call ID must be 6 characters');
-      return;
-    }
-
-    if (callId == _myCallId) {
-      _showSnackBar('Cannot call yourself');
-      return;
-    }
-
-    setState(() => _isLoading = true);
-
-    final success = await _callService.startCall(
-      callId,
-      isVideo ? CallType.video : CallType.audio,
-    );
-
-    setState(() => _isLoading = false);
-
-    if (success) {
-      _navigateToCall();
-    } else {
-      _showSnackBar('Failed to start call');
-    }
-  }
-
-  Future<void> _acceptIncomingCall({required bool isVideo}) async {
-    if (_incomingCallerId == null) return;
-
-    setState(() {
-      _showIncomingCall = false;
-    });
-
-    final success = await _callService.acceptCall(
-      _incomingCallerId!,
-      isVideo ? CallType.video : CallType.audio,
-    );
-
-    if (success) {
-      _navigateToCall();
-    }
-  }
-
-  void _rejectIncomingCall() {
-    if (_incomingCallerId != null) {
-      _callService.rejectCall(_incomingCallerId!);
-    }
-
-    setState(() {
-      _showIncomingCall = false;
-      _incomingCallerId = null;
-      _incomingCallerName = null;
-    });
-  }
-
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  void _copyCallId() {
-    if (_myCallId != null) {
-      Clipboard.setData(ClipboardData(text: _myCallId!));
-      _showSnackBar('Call ID copied!');
-    }
+    _initialize();
   }
 
   @override
   void dispose() {
-    _callIdController.dispose();
-    _focusNode.dispose();
-    _pulseController.dispose();
-    _presenceService?.disconnect();
     _callService.dispose();
+    _callIdController.dispose();
     super.dispose();
+  }
+
+  Future<void> _initialize() async {
+    await [
+      Permission.camera,
+      Permission.microphone,
+      Permission.notification,
+    ].request();
+
+    final prefs = await SharedPreferences.getInstance();
+    final storedId = prefs.getString('call_id') ?? '';
+    final storedName = prefs.getString('user_name') ?? 'User';
+    final storedAvatar = prefs.getString('user_avatar') ?? '';
+    final contacts = prefs.getStringList('contacts') ?? [];
+
+    setState(() {
+      _myCallId = storedId;
+      _userName = storedName;
+      _avatarUrl = storedAvatar;
+      _contactIds = contacts;
+      _isLoading = false;
+    });
+
+    await _callService.initialize();
+
+    final presence = PresenceService(
+      supabase: _supabase,
+      myCallId: _myCallId,
+      onOnlineUsersUpdated: (ids) {
+        setState(() => _onlineUserIds = ids);
+      },
+    );
+    presence.connect();
+
+    // Re-enable Background Service hook
+    await initializeService();
+    final service = FlutterBackgroundService();
+    service.invoke("init", {"call_id": _myCallId});
+  }
+
+  Future<void> _addContact() async {
+    String inputValue = '';
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder:
+          (context) => Container(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Add Contact',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF1C1C1E),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Enter their 6-character AURA code',
+                    style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                  ),
+                  const SizedBox(height: 24),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: TextField(
+                      autofocus: true,
+                      maxLength: 6,
+                      textCapitalization: TextCapitalization.characters,
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 8,
+                      ),
+                      textAlign: TextAlign.center,
+                      decoration: InputDecoration(
+                        hintText: 'ABC123',
+                        hintStyle: TextStyle(
+                          color: Colors.grey.shade300,
+                          letterSpacing: 8,
+                        ),
+                        border: InputBorder.none,
+                        counterText: '',
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 20,
+                        ),
+                      ),
+                      onChanged: (v) => inputValue = v.toUpperCase(),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        if (inputValue.isNotEmpty &&
+                            !_contactIds.contains(inputValue) &&
+                            inputValue != _myCallId) {
+                          _saveContact(inputValue);
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF128C7E),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: const Text(
+                        'Add Contact',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            ),
+          ),
+    );
+  }
+
+  Future<void> _showCallSheet() async {
+    _callIdController.clear();
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder:
+          (context) => Container(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Start a Call',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF1C1C1E),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Enter the 6-character Call ID',
+                    style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                  ),
+                  const SizedBox(height: 24),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: TextField(
+                      controller: _callIdController,
+                      autofocus: true,
+                      maxLength: 6,
+                      textCapitalization: TextCapitalization.characters,
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 8,
+                      ),
+                      textAlign: TextAlign.center,
+                      decoration: InputDecoration(
+                        hintText: 'ABC123',
+                        hintStyle: TextStyle(
+                          color: Colors.grey.shade300,
+                          letterSpacing: 8,
+                        ),
+                        border: InputBorder.none,
+                        counterText: '',
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 20,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 56,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              if (_callIdController.text.isNotEmpty) {
+                                _startCall(
+                                  _callIdController.text.trim().toUpperCase(),
+                                  false,
+                                );
+                              }
+                            },
+                            icon: const Icon(
+                              CupertinoIcons.phone_fill,
+                              color: Colors.white,
+                            ),
+                            label: const Text(
+                              'Voice',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF128C7E),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              elevation: 0,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: SizedBox(
+                          height: 56,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              if (_callIdController.text.isNotEmpty) {
+                                _startCall(
+                                  _callIdController.text.trim().toUpperCase(),
+                                  true,
+                                );
+                              }
+                            },
+                            icon: const Icon(
+                              CupertinoIcons.video_camera_solid,
+                              color: Colors.white,
+                            ),
+                            label: const Text(
+                              'Video',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF128C7E),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              elevation: 0,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            ),
+          ),
+    );
+  }
+
+  Future<void> _saveContact(String newId) async {
+    setState(() => _contactIds.add(newId));
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('contacts', _contactIds);
+  }
+
+  void _startCall(String targetId, bool video) async {
+    SoundService.startOutgoingRing();
+    final callType = video ? CallType.video : CallType.audio;
+
+    bool success = await _callService.startCall(targetId, callType);
+
+    if (success) {
+      if (!mounted) return;
+
+      SoundService.stopRing();
+      Navigator.of(context).push(
+        CupertinoPageRoute(
+          builder:
+              (_) => CallOverlay(
+                callService: _callService,
+                remoteDisplayName: targetId,
+                isVideoCall: video,
+              ),
+        ),
+      );
+    } else {
+      SoundService.playError();
+    }
+  }
+
+  Future<void> _sendPing(String targetId) async {
+    SoundService.playPing();
+    await _supabase.from('signals').insert({
+      'sender_id': _myCallId,
+      'receiver_id': targetId,
+      'type': 'ping',
+      'data': {},
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Ping sent to $targetId'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          backgroundColor: const Color(0xFF128C7E),
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.backgroundDark,
-      body: Stack(
-        children: [
-          // Background gradient
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  AppTheme.backgroundDark,
-                  Color(0xFF1A1030),
-                  AppTheme.backgroundDark,
-                ],
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        title: GestureDetector(
+          onTap:
+              () => Navigator.push(
+                context,
+                CupertinoPageRoute(builder: (_) => const ProfileScreen()),
               ),
-            ),
-          ),
-
-          // Main content
-          SafeArea(
-            child: Column(
-              children: [
-                const SizedBox(height: 24),
-
-                // My Call ID Card
-                _buildMyCallIdCard(),
-
-                const SizedBox(height: 32),
-
-                // Enter Call ID
-                _buildCallIdInput(),
-
-                const SizedBox(height: 24),
-
-                // Call buttons
-                _buildCallButtons(),
-
-                const SizedBox(height: 32),
-
-                // Online users
-                Expanded(child: _buildOnlineUsers()),
-              ],
-            ),
-          ),
-
-          // Incoming call overlay
-          if (_showIncomingCall) _buildIncomingCallOverlay(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMyCallIdCard() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          gradient: AppTheme.cardGradient,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppTheme.surfaceBorder),
-          boxShadow: [
-            BoxShadow(
-              color: AppTheme.primaryPurple.withOpacity(0.2),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            const Text(
-              'Your Call ID',
-              style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
-            ),
-            const SizedBox(height: 12),
-            GestureDetector(
-              onTap: _copyCallId,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  ShaderMask(
-                    shaderCallback:
-                        (bounds) =>
-                            AppTheme.primaryGradient.createShader(bounds),
-                    child: Text(
-                      _myCallId ?? '------',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Greeting Chip - Samsung Now Bar style
+              Container(
+                padding: const EdgeInsets.only(
+                  left: 4,
+                  right: 16,
+                  top: 4,
+                  bottom: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(color: Colors.grey.shade200),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircleAvatar(
+                      radius: 16,
+                      backgroundImage:
+                          _avatarUrl.isNotEmpty
+                              ? NetworkImage(_avatarUrl)
+                              : null,
+                      backgroundColor: const Color(0xFF128C7E),
+                      child:
+                          _avatarUrl.isEmpty
+                              ? const Icon(
+                                CupertinoIcons.person_fill,
+                                size: 16,
+                                color: Colors.white,
+                              )
+                              : null,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Hi, $_userName',
                       style: const TextStyle(
-                        fontSize: 36,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        letterSpacing: 8,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF1C1C1E),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  const Icon(
-                    Icons.copy,
-                    color: AppTheme.textSecondary,
-                    size: 20,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Tap to copy',
-              style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCallIdInput() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceLight,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.surfaceBorder),
-        ),
-        child: TextField(
-          controller: _callIdController,
-          focusNode: _focusNode,
-          textCapitalization: TextCapitalization.characters,
-          maxLength: 6,
-          style: const TextStyle(
-            fontSize: 24,
-            letterSpacing: 8,
-            fontWeight: FontWeight.bold,
-            color: AppTheme.textPrimary,
-          ),
-          textAlign: TextAlign.center,
-          decoration: const InputDecoration(
-            hintText: 'ENTER ID',
-            hintStyle: TextStyle(color: AppTheme.textMuted, letterSpacing: 4),
-            border: InputBorder.none,
-            counterText: '',
-          ),
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
-            UpperCaseTextFormatter(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCallButtons() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Row(
-        children: [
-          // Audio call button
-          Expanded(
-            child: _buildCallButton(
-              icon: Icons.call,
-              label: 'Voice',
-              gradient: const LinearGradient(
-                colors: [AppTheme.primaryBlue, AppTheme.primaryCyan],
-              ),
-              onTap: _isLoading ? null : () => _startCall(isVideo: false),
-            ),
-          ),
-          const SizedBox(width: 16),
-          // Video call button
-          Expanded(
-            child: _buildCallButton(
-              icon: Icons.videocam,
-              label: 'Video',
-              gradient: AppTheme.buttonGradient,
-              onTap: _isLoading ? null : () => _startCall(isVideo: true),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCallButton({
-    required IconData icon,
-    required String label,
-    required LinearGradient gradient,
-    VoidCallback? onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          gradient: gradient,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: gradient.colors.first.withOpacity(0.3),
-              blurRadius: 12,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (_isLoading)
-              const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              )
-            else
-              Icon(icon, color: Colors.white, size: 24),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildOnlineUsers() {
-    return Container(
-      margin: const EdgeInsets.all(24),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.backgroundCard,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.surfaceBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: const BoxDecoration(
-                  color: AppTheme.online,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Online (${_onlineUsers.length})',
-                style: const TextStyle(
-                  color: AppTheme.textPrimary,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
+                  ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          Expanded(
-            child:
-                _onlineUsers.isEmpty
-                    ? const Center(
-                      child: Text(
-                        'No one online yet',
-                        style: TextStyle(color: AppTheme.textMuted),
-                      ),
-                    )
-                    : ListView.builder(
-                      itemCount: _onlineUsers.length,
-                      itemBuilder: (context, index) {
-                        final userId = _onlineUsers[index];
-                        return _buildOnlineUserTile(userId);
-                      },
-                    ),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(CupertinoIcons.search, color: Color(0xFF128C7E)),
+            onPressed: () {},
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildOnlineUserTile(String userId) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceLight,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: const BoxDecoration(
-              color: AppTheme.online,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              userId,
-              style: const TextStyle(
-                color: AppTheme.textPrimary,
-                fontSize: 16,
-                letterSpacing: 2,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          // Quick call buttons
-          IconButton(
-            onPressed: () {
-              _callIdController.text = userId;
-              _startCall(isVideo: false);
-            },
-            icon: const Icon(Icons.call, color: AppTheme.primaryCyan, size: 20),
-          ),
-          IconButton(
-            onPressed: () {
-              _callIdController.text = userId;
-              _startCall(isVideo: true);
-            },
-            icon: const Icon(
-              Icons.videocam,
-              color: AppTheme.primaryPurple,
-              size: 20,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildIncomingCallOverlay() {
-    return Container(
-      color: Colors.black54,
-      child: SafeArea(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Pulsing avatar
-            AnimatedBuilder(
-              animation: _pulseAnimation,
-              builder: (context, child) {
-                return Transform.scale(
-                  scale: _pulseAnimation.value,
-                  child: Container(
-                    width: 120,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: AppTheme.primaryGradient,
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppTheme.primaryPurple.withOpacity(0.5),
-                          blurRadius: 30,
-                          spreadRadius: 10,
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.person,
-                      size: 60,
-                      color: Colors.white,
-                    ),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 32),
-            Text(
-              _incomingCallerName ?? 'Unknown',
-              style: const TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'ID: ${_incomingCallerId ?? ''}',
-              style: const TextStyle(
-                fontSize: 16,
-                color: AppTheme.textSecondary,
-                letterSpacing: 2,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Incoming Call...',
-              style: TextStyle(fontSize: 16, color: AppTheme.textMuted),
-            ),
-            const SizedBox(height: 48),
-
-            // Accept/Reject buttons
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 48),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      body:
+          _isLoading
+              ? const Center(child: CupertinoActivityIndicator())
+              : Column(
                 children: [
-                  // Reject
-                  _buildCircleButton(
-                    icon: Icons.call_end,
-                    color: AppTheme.error,
-                    onTap: _rejectIncomingCall,
+                  // Quick Action Button for New Call
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton.icon(
+                        onPressed: _showCallSheet,
+                        icon: const Icon(
+                          CupertinoIcons.phone_badge_plus,
+                          color: Color(0xFF128C7E),
+                        ),
+                        label: const Text(
+                          'Start New Call',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF128C7E),
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(
+                            0xFFE0F2F1,
+                          ), // Light green background
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
-                  // Accept audio
-                  _buildCircleButton(
-                    icon: Icons.call,
-                    color: AppTheme.success,
-                    onTap: () => _acceptIncomingCall(isVideo: false),
-                  ),
-                  // Accept video
-                  _buildCircleButton(
-                    icon: Icons.videocam,
-                    color: AppTheme.primaryPurple,
-                    onTap: () => _acceptIncomingCall(isVideo: true),
+                  Expanded(
+                    child:
+                        _contactIds.isEmpty
+                            ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    CupertinoIcons.person_2,
+                                    size: 64,
+                                    color: Colors.grey.shade300,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'No contacts yet',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.grey.shade500,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Tap + to add a friend',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.grey.shade400,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                            : ListView.separated(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              itemCount: _contactIds.length,
+                              separatorBuilder:
+                                  (_, __) => Divider(
+                                    height: 1,
+                                    indent: 88,
+                                    color: Colors.grey.shade200,
+                                  ),
+                              itemBuilder: (context, index) {
+                                final id = _contactIds[index];
+                                final isOnline = _onlineUserIds.contains(id);
+
+                                return ListTile(
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 8,
+                                  ),
+                                  leading: Stack(
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 28,
+                                        backgroundImage: NetworkImage(
+                                          'https://ui-avatars.com/api/?name=$id&background=random&size=128',
+                                        ),
+                                      ),
+                                      if (isOnline)
+                                        Positioned(
+                                          bottom: 0,
+                                          right: 0,
+                                          child: Container(
+                                            width: 16,
+                                            height: 16,
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFF25D366),
+                                              shape: BoxShape.circle,
+                                              border: Border.all(
+                                                color: Colors.white,
+                                                width: 2,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  title: Text(
+                                    id,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF1C1C1E),
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    isOnline ? 'Online' : 'Offline',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color:
+                                          isOnline
+                                              ? const Color(0xFF25D366)
+                                              : Colors.grey.shade500,
+                                    ),
+                                  ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: Icon(
+                                          CupertinoIcons.bell_fill,
+                                          color: Colors.orange.shade400,
+                                          size: 22,
+                                        ),
+                                        onPressed: () => _sendPing(id),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(
+                                          CupertinoIcons.phone_fill,
+                                          color: Color(0xFF128C7E),
+                                          size: 22,
+                                        ),
+                                        onPressed: () => _startCall(id, false),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(
+                                          CupertinoIcons.video_camera_solid,
+                                          color: Color(0xFF128C7E),
+                                          size: 22,
+                                        ),
+                                        onPressed: () => _startCall(id, true),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
                   ),
                 ],
               ),
-            ),
-          ],
-        ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _addContact,
+        backgroundColor: const Color(0xFF128C7E),
+        shape: const CircleBorder(),
+        child: const Icon(CupertinoIcons.add, color: Colors.white, size: 28),
       ),
-    );
-  }
-
-  Widget _buildCircleButton({
-    required IconData icon,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 64,
-        height: 64,
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: color.withOpacity(0.4),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: Icon(icon, color: Colors.white, size: 28),
-      ),
-    );
-  }
-}
-
-/// Text formatter for uppercase
-class UpperCaseTextFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    return TextEditingValue(
-      text: newValue.text.toUpperCase(),
-      selection: newValue.selection,
     );
   }
 }

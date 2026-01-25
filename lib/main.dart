@@ -48,7 +48,7 @@ Future<void> _initializeCallId() async {
 
 /// Generate a random 6-character alphanumeric call ID
 String _generateCallId() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  // const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   final uuid = const Uuid().v4().replaceAll('-', '').toUpperCase();
   return uuid.substring(0, 6);
 }

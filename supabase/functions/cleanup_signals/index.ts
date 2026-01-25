@@ -16,30 +16,19 @@ Deno.serve(async (req) => {
     }
 
     try {
-        // Initialize Supabase client with service role key
-        const supabaseUrl = Deno.env.get('https://luzazzyqihpertxteokq.supabase.co')!
-        const supabaseServiceKey = Deno.env.get('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1emF6enlxaWhwZXJ0eHRlb2txIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkzMDE2MzMsImV4cCI6MjA4NDg3NzYzM30.hkCVI2w5Hx9gIhdKh53u-JrFWB3oXuOEf6ZkQzAIRu0')!
+        // Initialize Supabase client
+        const supabaseUrl = 'https://luzazzyqihpertxteokq.supabase.co'
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1emF6enlxaWhwZXJ0eHRlb2txIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkzMDE2MzMsImV4cCI6MjA4NDg3NzYzM30.hkCVI2w5Hx9gIhdKh53u-JrFWB3oXuOEf6ZkQzAIRu0'
 
-        const supabase = createClient(supabaseUrl, supabaseServiceKey)
+        const supabase = createClient(supabaseUrl, supabaseKey)
 
         // Calculate threshold: 2 minutes ago
-        // Signals older than this are considered abandoned
         const thresholdDate = new Date(Date.now() - 2 * 60 * 1000)
         const thresholdISO = thresholdDate.toISOString()
 
         console.log(`[Cleanup] Running signal cleanup at ${new Date().toISOString()}`)
-        console.log(`[Cleanup] Deleting signals older than ${thresholdISO}`)
-
-        // Count signals before deletion (for logging)
-        const { count: beforeCount } = await supabase
-            .from('signals')
-            .select('*', { count: 'exact', head: true })
 
         // Delete only abandoned signals (older than 2 minutes)
-        // This preserves:
-        // - Active ICE candidates being exchanged
-        // - Recent offers/answers in progress
-        // - Fresh pings for incoming calls
         const { data, error } = await supabase
             .from('signals')
             .delete()
@@ -53,23 +42,12 @@ Deno.serve(async (req) => {
 
         const deletedCount = data?.length ?? 0
 
-        // Count signals after deletion
-        const { count: afterCount } = await supabase
-            .from('signals')
-            .select('*', { count: 'exact', head: true })
-
-        console.log(`[Cleanup] Complete!`)
-        console.log(`[Cleanup] Before: ${beforeCount ?? 0} signals`)
         console.log(`[Cleanup] Deleted: ${deletedCount} abandoned signals`)
-        console.log(`[Cleanup] After: ${afterCount ?? 0} signals`)
 
         return new Response(
             JSON.stringify({
                 success: true,
                 deleted: deletedCount,
-                before: beforeCount ?? 0,
-                after: afterCount ?? 0,
-                threshold: thresholdISO,
                 timestamp: new Date().toISOString(),
             }),
             {
@@ -77,13 +55,13 @@ Deno.serve(async (req) => {
                 status: 200,
             }
         )
-    } catch (error) {
+    } catch (error: any) {
         console.error('[Cleanup] Fatal error:', error)
 
         return new Response(
             JSON.stringify({
                 success: false,
-                error: error.message,
+                error: error.message || 'Unknown error',
                 timestamp: new Date().toISOString(),
             }),
             {
