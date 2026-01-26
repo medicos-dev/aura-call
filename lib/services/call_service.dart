@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -32,13 +33,15 @@ enum CallType { audio, video }
 
 enum CallState { idle, ringing, connecting, connected, ended }
 
-class CallService extends ChangeNotifier {
+class CallService extends ChangeNotifier with WidgetsBindingObserver {
   final SupabaseClient _supabase = Supabase.instance.client;
 
   String? _myCallId;
+  String? _myName; // Store user name
   MediaStream? _localStream;
   CallType _callType = CallType.audio;
   CallState _callState = CallState.idle;
+  AppLifecycleState _appState = AppLifecycleState.resumed;
 
   // Multi-party support: map of participant ID to their connection
   final Map<String, ParticipantConnection> _participants = {};
@@ -64,6 +67,16 @@ class CallService extends ChangeNotifier {
     ],
   };
 
+  CallService() {
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appState = state;
+    super.didChangeAppLifecycleState(state);
+  }
+
   // Getters
   String? get myCallId => _myCallId;
   CallState get callState => _callState;
@@ -78,6 +91,7 @@ class CallService extends ChangeNotifier {
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
     _myCallId = prefs.getString('call_id');
+    _myName = prefs.getString('user_name') ?? 'User'; // Load name
 
     if (_myCallId != null) {
       _subscribeToSignals();
@@ -113,8 +127,10 @@ class CallService extends ChangeNotifier {
 
       switch (signal.type) {
         case 'ping':
-          // Bell notification - play sound on RECEIVER side
-          await SoundService.playPing();
+          // Only play sound if in foreground to avoid double-play with notification
+          if (_appState == AppLifecycleState.resumed) {
+            await SoundService.playPing();
+          }
           onIncomingCall?.call(
             signal.senderId,
             signal.data['name'] ?? 'Unknown',
@@ -159,7 +175,7 @@ class CallService extends ChangeNotifier {
 
       // Send ping to alert receiver (they will hear the bell)
       await _sendSignal(targetCallId, 'ping', {
-        'name': 'User', // TODO: Get actual display name
+        'name': _myName, // Send actual name
         'call_type': type == CallType.video ? 'video' : 'audio',
       });
 
@@ -558,6 +574,7 @@ class CallService extends ChangeNotifier {
 
   @override
   Future<void> dispose() async {
+    WidgetsBinding.instance.removeObserver(this);
     await _signalChannel?.unsubscribe();
     await _cleanup();
     super.dispose();

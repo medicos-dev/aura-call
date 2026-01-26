@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../app_theme.dart';
+
 import 'home_screen.dart';
 import 'onboarding_screen.dart';
 
@@ -86,109 +86,83 @@ class _SplashScreenState extends State<SplashScreen>
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-        systemNavigationBarColor: AppTheme.backgroundDark,
-        systemNavigationBarIconBrightness: Brightness.light,
+        statusBarIconBrightness: Brightness.dark, // Dark icons for white bg
+        systemNavigationBarColor: Colors.white,
+        systemNavigationBarIconBrightness: Brightness.dark,
       ),
     );
 
     return Scaffold(
-      backgroundColor: AppTheme.backgroundDark,
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              AppTheme.backgroundDark,
-              Color(0xFF1A1030),
-              AppTheme.backgroundDark,
-            ],
-          ),
-        ),
-        child: AnimatedBuilder(
-          animation: _controller,
-          builder: (context, child) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Logo with glow effect
-                  Transform.scale(
-                    scale: _scaleAnimation.value,
-                    child: Opacity(
-                      opacity: _fadeAnimation.value,
-                      child: Container(
-                        width: 140,
-                        height: 140,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(30),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppTheme.primaryPurple.withValues(
-                                alpha: 0.5,
-                              ),
-                              blurRadius: 40,
-                              spreadRadius: 10,
-                            ),
-                            BoxShadow(
-                              color: AppTheme.primaryCyan.withValues(
-                                alpha: 0.3,
-                              ),
-                              blurRadius: 60,
-                              spreadRadius: 20,
-                            ),
-                          ],
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(30),
-                          child: Image.asset(
-                            'assets/aura.png',
-                            fit: BoxFit.cover,
+      backgroundColor: Colors.white, // Clean white background
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Logo without "purple glow", just clean shadow
+            Transform.scale(
+              scale: _scaleAnimation.value,
+              child: Opacity(
+                opacity: _fadeAnimation.value,
+                child: Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF128C7E),
+                    borderRadius: BorderRadius.circular(30),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF128C7E).withValues(alpha: 0.3),
+                        blurRadius: 30,
+                        spreadRadius: 5,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(30),
+                    child: Image.asset(
+                      'assets/aura.png',
+                      fit: BoxFit.cover,
+                      // Fallback icon if asset missing
+                      errorBuilder:
+                          (context, error, stackTrace) => const Icon(
+                            Icons.call,
+                            size: 60,
+                            color: Colors.white,
                           ),
-                        ),
-                      ),
                     ),
                   ),
-                  const SizedBox(height: 32),
-                  // App name with gradient
-                  Opacity(
-                    opacity: _fadeAnimation.value,
-                    child: ShaderMask(
-                      shaderCallback:
-                          (bounds) =>
-                              AppTheme.primaryGradient.createShader(bounds),
-                      child: const Text(
-                        'AURA CALL',
-                        style: TextStyle(
-                          fontFamily: 'SourGummy',
-                          fontSize: 36,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                          letterSpacing: 4,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Opacity(
-                    opacity: _fadeAnimation.value * 0.7,
-                    child: const Text(
-                      'Connect Instantly',
-                      style: TextStyle(
-                        fontFamily: 'SourGummy',
-                        fontSize: 14,
-                        color: AppTheme.textSecondary,
-                        letterSpacing: 2,
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            );
-          },
+            ),
+            const SizedBox(height: 32),
+            // App name - Clean dark text
+            Opacity(
+              opacity: _fadeAnimation.value,
+              child: const Text(
+                'AURA CALL',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900, // Heavy weight
+                  color: Color(0xFF111B21),
+                  letterSpacing: 2,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Opacity(
+              opacity: _fadeAnimation.value * 0.7,
+              child: const Text(
+                'Connect Instantly',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF8696A0),
+                  letterSpacing: 1,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

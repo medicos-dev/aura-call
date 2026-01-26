@@ -386,12 +386,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _sendPing(String targetId) async {
-    SoundService.playPing();
+    // SoundService.playPing(); // Removed self-play as per user feedback
     await _supabase.from('signals').insert({
       'sender_id': _myCallId,
       'receiver_id': targetId,
       'type': 'ping',
-      'data': {},
+      'data': {'name': _userName},
     });
 
     if (mounted) {
@@ -490,6 +490,66 @@ class _HomeScreenState extends State<HomeScreen> {
               ? const Center(child: CupertinoActivityIndicator(radius: 20))
               : Column(
                 children: [
+                  // Return to Call Bar
+                  AnimatedBuilder(
+                    animation: _callService,
+                    builder: (context, child) {
+                      if (!_callService.isInCall)
+                        return const SizedBox.shrink();
+                      return GestureDetector(
+                        onTap: () {
+                          Navigator.of(context).push(
+                            CupertinoPageRoute(
+                              builder:
+                                  (_) => CallOverlay(
+                                    callService: _callService,
+                                    remoteDisplayName:
+                                        _callService.participants.isNotEmpty
+                                            ? _callService
+                                                .participants
+                                                .first
+                                                .participantId
+                                            : 'Unknown',
+                                    isVideoCall:
+                                        _callService.callType == CallType.video,
+                                  ),
+                            ),
+                          );
+                        },
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                            horizontal: 16,
+                          ),
+                          color: const Color(0xFF128C7E),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                CupertinoIcons.phone_fill,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 12),
+                              const Text(
+                                'Tap to return to call',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const Spacer(),
+                              const Icon(
+                                CupertinoIcons.chevron_right,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                   // Quick Action Button for New Call
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),

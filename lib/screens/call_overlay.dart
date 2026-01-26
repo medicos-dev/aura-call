@@ -116,12 +116,22 @@ class _CallOverlayState extends State<CallOverlay>
           // Background
           Positioned.fill(
             child:
-                widget.isVideoCall && _remoteRenderer.srcObject != null
-                    ? RTCVideoView(
-                      _remoteRenderer,
-                      objectFit:
-                          RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-                    )
+                widget.isVideoCall
+                    ? (_remoteRenderer.srcObject != null
+                        ? RTCVideoView(
+                          _remoteRenderer,
+                          objectFit:
+                              RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                        )
+                        : (_localRenderer.srcObject != null
+                            ? RTCVideoView(
+                              _localRenderer,
+                              objectFit:
+                                  RTCVideoViewObjectFit
+                                      .RTCVideoViewObjectFitCover,
+                              mirror: true,
+                            )
+                            : Container(color: Colors.black)))
                     : Container(
                       decoration: const BoxDecoration(
                         gradient: LinearGradient(
@@ -191,8 +201,10 @@ class _CallOverlayState extends State<CallOverlay>
                     ),
           ),
 
-          // Floating PiP - Local Video
-          if (widget.isVideoCall && _localRenderer.srcObject != null)
+          // Floating PiP - Local Video (Only show if remote is connected)
+          if (widget.isVideoCall &&
+              _localRenderer.srcObject != null &&
+              _remoteRenderer.srcObject != null)
             Positioned(
               right: 20,
               top: 60,
@@ -309,7 +321,10 @@ class _CallOverlayState extends State<CallOverlay>
                         CupertinoIcons.chevron_back,
                         color: Colors.white,
                       ),
-                      onPressed: _endCall,
+                      onPressed: () {
+                        // Minimize call (pop overlay but keep call active)
+                        Navigator.of(context).pop();
+                      },
                     ),
                   ],
                 ),

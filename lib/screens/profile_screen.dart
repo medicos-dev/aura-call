@@ -142,19 +142,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           width: 44,
                           height: 56,
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [Color(0xFF128C7E), Color(0xFF25D366)],
-                            ),
+                            color: const Color(0xFF128C7E), // Solid Teal
                             borderRadius: BorderRadius.circular(12),
                             boxShadow: [
                               BoxShadow(
                                 color: const Color(
                                   0xFF128C7E,
-                                ).withValues(alpha: 0.3),
-                                blurRadius: 8,
-                                offset: const Offset(0, 4),
+                                ).withValues(alpha: 0.2),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
                               ),
                             ],
                           ),

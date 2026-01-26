@@ -74,6 +74,8 @@ void onStart(ServiceInstance service) async {
               final type = newRecord['type'];
               final senderId = newRecord['sender_id'];
 
+              final senderName = newRecord['data']['name'] ?? 'Someone';
+
               if (type == 'ping') {
                 // Trigger High Priority Notification
                 const AndroidNotificationDetails
@@ -93,7 +95,7 @@ void onStart(ServiceInstance service) async {
                 await flutterLocalNotificationsPlugin.show(
                   0,
                   'PING!',
-                  '$senderId is looking for you.',
+                  '$senderName is looking for you.',
                   platformChannelSpecifics,
                   payload: 'ping',
                 );
@@ -101,10 +103,10 @@ void onStart(ServiceInstance service) async {
                 // Trigger CallKit
                 CallKitParams callKitParams = CallKitParams(
                   id: newRecord['id'],
-                  nameCaller: senderId,
+                  nameCaller: senderName,
                   appName: 'AURA',
                   avatar:
-                      'https://ui-avatars.com/api/?name=$senderId&background=007AFF&color=fff',
+                      'https://ui-avatars.com/api/?name=$senderName&background=007AFF&color=fff',
                   handle: senderId,
                   type: 0,
                   textAccept: 'Accept',

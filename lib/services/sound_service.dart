@@ -29,13 +29,17 @@ class SoundService {
 
   static Future<void> startOutgoingRing() async {
     await _loopPlayer.setReleaseMode(ReleaseMode.loop);
-    await _loopPlayer.play(AssetSource('outgoing.mp3'));
+    await _loopPlayer.setSource(AssetSource('outgoing.mp3'));
+    await _loopPlayer.setReleaseMode(ReleaseMode.loop);
+    await _loopPlayer.resume();
   }
 
   static Future<void> startIncomingRing() async {
     // Usually handled by CallKit, but for in-app header notification:
     await _loopPlayer.setReleaseMode(ReleaseMode.loop);
-    await _loopPlayer.play(AssetSource('incoming.mp3'));
+    await _loopPlayer.setSource(AssetSource('incoming.mp3'));
+    await _loopPlayer.setReleaseMode(ReleaseMode.loop);
+    await _loopPlayer.resume();
   }
 
   static Future<void> stopRing() async {
