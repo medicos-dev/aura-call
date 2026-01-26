@@ -487,7 +487,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body:
           _isLoading
-              ? const Center(child: CupertinoActivityIndicator())
+              ? const Center(child: CupertinoActivityIndicator(radius: 20))
               : Column(
                 children: [
                   // Quick Action Button for New Call
