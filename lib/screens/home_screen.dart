@@ -172,6 +172,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             !_contactIds.contains(inputValue) &&
                             inputValue != _myCallId) {
                           _saveContact(inputValue);
+                          _sendContactAddSignal(inputValue);
                         }
                       },
                       style: ElevatedButton.styleFrom(
@@ -408,6 +409,15 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _sendContactAddSignal(String targetId) async {
+    await _supabase.from('signals').insert({
+      'sender_id': _myCallId,
+      'receiver_id': targetId,
+      'type': 'contact_add',
+      'data': {'name': _userName},
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -494,8 +504,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   AnimatedBuilder(
                     animation: _callService,
                     builder: (context, child) {
-                      if (!_callService.isInCall)
+                      if (!_callService.isInCall) {
                         return const SizedBox.shrink();
+                      }
                       return GestureDetector(
                         onTap: () {
                           Navigator.of(context).push(

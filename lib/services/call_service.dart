@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
+// import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -135,6 +135,10 @@ class CallService extends ChangeNotifier with WidgetsBindingObserver {
             signal.senderId,
             signal.data['name'] ?? 'Unknown',
           );
+          break;
+
+        case 'contact_add':
+          await _handleContactAdd(signal);
           break;
 
         case 'offer':
@@ -425,6 +429,21 @@ class CallService extends ChangeNotifier with WidgetsBindingObserver {
 
     if (_participants.isEmpty) {
       await endCall();
+    }
+  }
+
+  /// Handle incoming contact add request
+  Future<void> _handleContactAdd(CallSignal signal) async {
+    final prefs = await SharedPreferences.getInstance();
+    final contacts = prefs.getStringList('contacts') ?? [];
+
+    if (!contacts.contains(signal.senderId)) {
+      contacts.add(signal.senderId);
+      await prefs.setStringList('contacts', contacts);
+
+      // Notify current user if possible (e.g. via Sound or local notification)
+      // Since we can't easily show UI from Service, just update storage
+      // The HomeScreen will pick it up on refresh or we can notify listeners
     }
   }
 
