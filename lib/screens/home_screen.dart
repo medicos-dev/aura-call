@@ -392,6 +392,7 @@ class _HomeScreenState extends State<HomeScreen> {
       'sender_id': _myCallId,
       'receiver_id': targetId,
       'type': 'ping',
+      'status': 'active',
       'data': {'name': _userName},
     });
 

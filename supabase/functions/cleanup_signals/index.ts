@@ -9,7 +9,9 @@ const corsHeaders = {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-Deno.serve(async (req) => {
+declare const Deno: any;
+
+Deno.serve(async (req: Request) => {
     // Handle CORS
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders })
@@ -28,11 +30,13 @@ Deno.serve(async (req) => {
 
         console.log(`[Cleanup] Running signal cleanup at ${new Date().toISOString()}`)
 
-        // Delete only abandoned signals (older than 2 minutes)
+        // Delete signals that are either:
+        // 1. Marked as 'processed' (completed)
+        // 2. 'active' but older than 2 minutes (abandoned)
         const { data, error } = await supabase
             .from('signals')
             .delete()
-            .lt('created_at', thresholdISO)
+            .or(`status.eq.processed,and(status.eq.active,created_at.lt.${thresholdISO})`)
             .select('id')
 
         if (error) {

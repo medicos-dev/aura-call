@@ -162,10 +162,22 @@ class CallService extends ChangeNotifier with WidgetsBindingObserver {
           break;
       }
 
-      // Delete processed signal
-      await _deleteSignal(signal.id);
+      // Mark signal as processed instead of deleting immediately
+      await _markSignalProcessed(signal.id);
     } catch (e) {
       debugPrint('Error handling signal: $e');
+    }
+  }
+
+  /// Mark a signal as processed (completed)
+  Future<void> _markSignalProcessed(String signalId) async {
+    try {
+      await _supabase
+          .from('signals')
+          .update({'status': 'processed'})
+          .eq('id', signalId);
+    } catch (e) {
+      debugPrint('Error marking signal processed: $e');
     }
   }
 
@@ -517,15 +529,6 @@ class CallService extends ChangeNotifier with WidgetsBindingObserver {
       });
     } catch (e) {
       debugPrint('Error sending signal: $e');
-    }
-  }
-
-  /// Delete a processed signal
-  Future<void> _deleteSignal(String signalId) async {
-    try {
-      await _supabase.from('signals').delete().eq('id', signalId);
-    } catch (e) {
-      debugPrint('Error deleting signal: $e');
     }
   }
 
