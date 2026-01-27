@@ -69,7 +69,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // Sync contacts from cloud
     if (storedId.isNotEmpty) {
+      _syncProfileIfNeeded(
+        storedId,
+        storedName,
+        storedAvatar,
+      ); // Self-heal profile
       await _syncContacts(storedId);
+      _subscriptionContacts(); // Listen for new contacts (Bidirectional)
     }
 
     // Fetch names for contacts
@@ -222,161 +228,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _showCallSheet() async {
-    _callIdController.clear();
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder:
-          (context) => Container(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
-            ),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  const Text(
-                    'Start a Call',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1C1C1E),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Enter the 6-character Call ID',
-                    style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-                  ),
-                  const SizedBox(height: 24),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: TextField(
-                      controller: _callIdController,
-                      autofocus: true,
-                      maxLength: 6,
-                      textCapitalization: TextCapitalization.characters,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 8,
-                      ),
-                      textAlign: TextAlign.center,
-                      decoration: InputDecoration(
-                        hintText: 'ABC123',
-                        hintStyle: TextStyle(
-                          color: Colors.grey.shade300,
-                          letterSpacing: 8,
-                        ),
-                        border: InputBorder.none,
-                        counterText: '',
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 20,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: SizedBox(
-                          height: 56,
-                          child: ElevatedButton.icon(
-                            onPressed: () {
-                              Navigator.pop(context);
-                              if (_callIdController.text.isNotEmpty) {
-                                _startCall(
-                                  _callIdController.text.trim().toUpperCase(),
-                                  false,
-                                );
-                              }
-                            },
-                            icon: const Icon(
-                              CupertinoIcons.phone_fill,
-                              color: Colors.white,
-                            ),
-                            label: const Text(
-                              'Voice',
-                              style: TextStyle(fontWeight: FontWeight.w600),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF128C7E),
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              elevation: 0,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: SizedBox(
-                          height: 56,
-                          child: ElevatedButton.icon(
-                            onPressed: () {
-                              Navigator.pop(context);
-                              if (_callIdController.text.isNotEmpty) {
-                                _startCall(
-                                  _callIdController.text.trim().toUpperCase(),
-                                  true,
-                                );
-                              }
-                            },
-                            icon: const Icon(
-                              CupertinoIcons.video_camera_solid,
-                              color: Colors.white,
-                            ),
-                            label: const Text(
-                              'Video',
-                              style: TextStyle(fontWeight: FontWeight.w600),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF128C7E),
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              elevation: 0,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                ],
-              ),
-            ),
-          ),
-    );
-  }
-
   Future<void> _saveContact(String newId) async {
     setState(() => _contactIds.add(newId));
     final prefs = await SharedPreferences.getInstance();
@@ -502,6 +353,47 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       debugPrint('Error fetching contact names: $e');
     }
+  }
+
+  Future<void> _syncProfileIfNeeded(
+    String id,
+    String name,
+    String avatar,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('need_profile_sync') ?? true) {
+      try {
+        await _supabase.from('profiles').upsert({
+          'id': id,
+          'username': name,
+          'avatar_url': avatar,
+          'last_seen': DateTime.now().toIso8601String(),
+        });
+        await prefs.setBool('need_profile_sync', false);
+      } catch (e) {
+        debugPrint('Retry profile sync failed: $e');
+      }
+    }
+  }
+
+  void _subscriptionContacts() {
+    _supabase
+        .channel('public:contacts')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'contacts',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'owner_id',
+            value: _myCallId,
+          ),
+          callback: (payload) {
+            // Reload contacts when someone (or background service) adds a contact for me
+            _syncContacts(_myCallId);
+          },
+        )
+        .subscribe();
   }
 
   @override
@@ -647,38 +539,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       );
                     },
                   ),
-                  // Quick Action Button for New Call
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                    child: SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton.icon(
-                        onPressed: _showCallSheet,
-                        icon: const Icon(
-                          CupertinoIcons.phone_badge_plus,
-                          color: Color(0xFF128C7E),
-                        ),
-                        label: const Text(
-                          'Start New Call',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF128C7E),
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(
-                            0xFFE0F2F1,
-                          ), // Light green background
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+
                   Expanded(
                     child:
                         _contactIds.isEmpty

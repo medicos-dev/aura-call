@@ -44,17 +44,22 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     await _storage.write(key: 'user_name', value: name);
     await _storage.write(key: 'user_avatar', value: avatarUrl);
 
+    // Try to sync to cloud
     try {
       final supabase = Supabase.instance.client;
-      await supabase.from('profiles').upsert({
-        'id': callId,
-        'username': name,
-        'avatar_url': avatarUrl,
-        'last_seen': DateTime.now().toIso8601String(),
-      });
+      await supabase
+          .from('profiles')
+          .upsert({
+            'id': callId,
+            'username': name,
+            'avatar_url': avatarUrl,
+            'last_seen': DateTime.now().toIso8601String(),
+          })
+          .timeout(const Duration(seconds: 5));
     } catch (e) {
       debugPrint('Error updating profile: $e');
-      // Continue anyway, as local storage is key for app function
+      // Mark for retry later
+      await prefs.setBool('need_profile_sync', true);
     }
 
     if (!mounted) return;

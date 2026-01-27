@@ -144,6 +144,39 @@ void onStart(ServiceInstance service) async {
                 );
 
                 await FlutterCallkitIncoming.showCallkitIncoming(callKitParams);
+              } else if (type == 'contact_add') {
+                // Auto-add contact (Bidirectional)
+                try {
+                  await supabase.from('contacts').upsert({
+                    'owner_id': myCallId,
+                    'contact_id': senderId,
+                  });
+                } catch (e) {
+                  // Ignore if already exists
+                }
+
+                // Show Notification
+                const AndroidNotificationDetails
+                androidPlatformChannelSpecifics = AndroidNotificationDetails(
+                  'aura_contact_channel',
+                  'New Contacts',
+                  channelDescription: 'Notifications when someone adds you',
+                  importance: Importance.defaultImportance,
+                  priority: Priority.defaultPriority,
+                  showWhen: true,
+                );
+                const NotificationDetails platformChannelSpecifics =
+                    NotificationDetails(
+                      android: androidPlatformChannelSpecifics,
+                    );
+
+                await flutterLocalNotificationsPlugin.show(
+                  1,
+                  'New Friend!',
+                  '$senderName added you as a contact.',
+                  platformChannelSpecifics,
+                  payload: 'contact_add',
+                );
               }
             },
           )
