@@ -15,7 +15,7 @@ class User {
     return User(
       id: json['id'] as String,
       callId: json['call_id'] as String,
-      displayName: json['display_name'] as String? ?? 'Unknown',
+      displayName: json['username'] as String? ?? 'Unknown',
       lastSeen:
           json['last_seen'] != null ? DateTime.parse(json['last_seen']) : null,
     );
@@ -25,7 +25,7 @@ class User {
     return {
       'id': id,
       'call_id': callId,
-      'display_name': displayName,
+      'username': displayName, // API expects username now
       'last_seen': lastSeen?.toIso8601String(),
     };
   }

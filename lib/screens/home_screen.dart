@@ -27,6 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _avatarUrl = '';
   List<String> _contactIds = [];
   List<String> _onlineUserIds = [];
+  Map<String, String> _contactNames = {}; // Map Call ID -> Username
   bool _isLoading = true;
 
   late CallService _callService;
@@ -65,6 +66,11 @@ class _HomeScreenState extends State<HomeScreen> {
       _contactIds = contacts;
       _isLoading = false;
     });
+
+    // Fetch names for contacts
+    if (contacts.isNotEmpty) {
+      await _fetchContactNames(contacts);
+    }
 
     await _callService.initialize();
 
@@ -359,6 +365,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _contactIds.add(newId));
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('contacts', _contactIds);
+    await _fetchContactNames([newId]);
   }
 
   void _startCall(String targetId, bool video) async {
@@ -417,6 +424,29 @@ class _HomeScreenState extends State<HomeScreen> {
       'type': 'contact_add',
       'data': {'name': _userName},
     });
+  }
+
+  Future<void> _fetchContactNames(List<String> ids) async {
+    if (ids.isEmpty) return;
+    try {
+      final response = await _supabase
+          .from('profiles')
+          .select('id, username')
+          .inFilter('id', ids);
+
+      final names = <String, String>{};
+      for (final row in response) {
+        names[row['id'] as String] = row['username'] as String? ?? 'Unknown';
+      }
+
+      if (mounted) {
+        setState(() {
+          _contactNames.addAll(names);
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching contact names: $e');
+    }
   }
 
   @override
@@ -638,6 +668,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               itemBuilder: (context, index) {
                                 final id = _contactIds[index];
                                 final isOnline = _onlineUserIds.contains(id);
+                                final name = _contactNames[id] ?? id;
 
                                 return ListTile(
                                   contentPadding: const EdgeInsets.symmetric(
@@ -649,7 +680,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       CircleAvatar(
                                         radius: 28,
                                         backgroundImage: NetworkImage(
-                                          'https://ui-avatars.com/api/?name=$id&background=random&size=128',
+                                          'https://ui-avatars.com/api/?name=${Uri.encodeComponent(name)}&background=random&size=128',
                                         ),
                                       ),
                                       if (isOnline)
@@ -672,7 +703,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     ],
                                   ),
                                   title: Text(
-                                    id,
+                                    name,
                                     style: const TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w600,
@@ -680,13 +711,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                     ),
                                   ),
                                   subtitle: Text(
-                                    isOnline ? 'Online' : 'Offline',
+                                    id != name
+                                        ? id
+                                        : (isOnline ? 'Online' : 'Offline'),
                                     style: TextStyle(
                                       fontSize: 13,
-                                      color:
-                                          isOnline
-                                              ? const Color(0xFF25D366)
-                                              : Colors.grey.shade500,
+                                      color: Colors.grey.shade500,
                                     ),
                                   ),
                                   trailing: Row(
