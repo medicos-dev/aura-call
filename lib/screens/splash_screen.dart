@@ -130,31 +130,28 @@ class _SplashScreenState extends State<SplashScreen>
                     scale: _scaleAnimation.value,
                     child: Column(
                       children: [
-                        // Minimalist Logo Icon
+                        // App Logo
                         Container(
-                          width: 80,
-                          height: 80,
+                          width: 100,
+                          height: 100,
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFF128C7E), Color(0xFF25D366)],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(22),
+                            borderRadius: BorderRadius.circular(25),
                             boxShadow: [
                               BoxShadow(
                                 color: const Color(
                                   0xFF128C7E,
-                                ).withValues(alpha: 0.3),
+                                ).withValues(alpha: 0.2),
                                 blurRadius: 20,
                                 offset: const Offset(0, 10),
                               ),
                             ],
                           ),
-                          child: const Icon(
-                            Icons.call,
-                            color: Colors.white,
-                            size: 40,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(25),
+                            child: Image.asset(
+                              'assets/aura.png',
+                              fit: BoxFit.cover,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 30),

@@ -55,9 +55,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             'avatar_url': avatarUrl,
             'last_seen': DateTime.now().toIso8601String(),
           })
-          .timeout(const Duration(seconds: 5));
+          .timeout(const Duration(seconds: 10));
     } catch (e) {
       debugPrint('Error updating profile: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Sync Error: $e'),
+            duration: const Duration(seconds: 5),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
       // Mark for retry later
       await prefs.setBool('need_profile_sync', true);
     }
