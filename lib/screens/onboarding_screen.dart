@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'home_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
@@ -35,6 +36,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     await prefs.setString('user_name', name);
     await prefs.setString('user_avatar', avatarUrl);
     await prefs.setBool('onboarding_complete', true);
+
+    try {
+      final supabase = Supabase.instance.client;
+      await supabase.from('profiles').upsert({
+        'id': callId,
+        'username': name,
+        'avatar_url': avatarUrl,
+        'last_seen': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      debugPrint('Error updating profile: $e');
+      // Continue anyway, as local storage is key for app function
+    }
 
     if (!mounted) return;
     Navigator.of(
