@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'home_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
@@ -14,6 +15,7 @@ class OnboardingScreen extends StatefulWidget {
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final TextEditingController _nameController = TextEditingController();
+  final _storage = const FlutterSecureStorage();
   bool _isLoading = false;
 
   Future<void> _completeSetup() async {
@@ -36,6 +38,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     await prefs.setString('user_name', name);
     await prefs.setString('user_avatar', avatarUrl);
     await prefs.setBool('onboarding_complete', true);
+
+    // Persist securely
+    await _storage.write(key: 'call_id', value: callId);
+    await _storage.write(key: 'user_name', value: name);
+    await _storage.write(key: 'user_avatar', value: avatarUrl);
 
     try {
       final supabase = Supabase.instance.client;

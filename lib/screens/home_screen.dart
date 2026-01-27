@@ -57,7 +57,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final storedId = prefs.getString('call_id') ?? '';
     final storedName = prefs.getString('user_name') ?? 'User';
     final storedAvatar = prefs.getString('user_avatar') ?? '';
-    final contacts = prefs.getStringList('contacts') ?? [];
+    List<String> contacts = prefs.getStringList('contacts') ?? [];
 
     setState(() {
       _myCallId = storedId;
@@ -66,6 +66,11 @@ class _HomeScreenState extends State<HomeScreen> {
       _contactIds = contacts;
       _isLoading = false;
     });
+
+    // Sync contacts from cloud
+    if (storedId.isNotEmpty) {
+      await _syncContacts(storedId);
+    }
 
     // Fetch names for contacts
     if (contacts.isNotEmpty) {
@@ -366,6 +371,16 @@ class _HomeScreenState extends State<HomeScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('contacts', _contactIds);
     await _fetchContactNames([newId]);
+
+    // Cloud sync
+    try {
+      await _supabase.from('contacts').upsert({
+        'owner_id': _myCallId,
+        'contact_id': newId,
+      });
+    } catch (e) {
+      debugPrint('Error saving contact to cloud: $e');
+    }
   }
 
   void _startCall(String targetId, bool video) async {
@@ -424,6 +439,35 @@ class _HomeScreenState extends State<HomeScreen> {
       'type': 'contact_add',
       'data': {'name': _userName},
     });
+  }
+
+  Future<void> _syncContacts(String myId) async {
+    try {
+      final response = await _supabase
+          .from('contacts')
+          .select('contact_id')
+          .eq('owner_id', myId);
+
+      final cloudContacts =
+          (response as List).map((e) => e['contact_id'] as String).toList();
+      final localContacts = _contactIds;
+
+      // Merge unique
+      final allContacts = {...localContacts, ...cloudContacts}.toList();
+
+      if (allContacts.length > localContacts.length) {
+        setState(() => _contactIds = allContacts);
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setStringList('contacts', allContacts);
+
+        // Fetch names for new merged list
+        await _fetchContactNames(allContacts);
+      } else if (localContacts.isNotEmpty) {
+        await _fetchContactNames(localContacts);
+      }
+    } catch (e) {
+      debugPrint('Error syncing contacts: $e');
+    }
   }
 
   Future<void> _fetchContactNames(List<String> ids) async {
