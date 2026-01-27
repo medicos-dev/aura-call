@@ -24,54 +24,56 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(seconds: 2), // Slower, more visible
     );
 
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
-        curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
+        curve: const Interval(0.0, 0.5, curve: Curves.easeOut),
       ),
     );
 
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
+    _scaleAnimation = Tween<double>(begin: 0.5, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
-        curve: const Interval(0.0, 0.6, curve: Curves.easeOutBack),
+        curve: const Interval(0.0, 0.5, curve: Curves.easeOutBack),
       ),
     );
 
-    _controller.forward();
+    _runSplashSequence();
+  }
 
-    // Navigate after 1 second
-    Future.delayed(const Duration(milliseconds: 1000), () async {
-      if (mounted) {
-        final prefs = await SharedPreferences.getInstance();
-        final onboardingComplete =
-            prefs.getBool('onboarding_complete') ?? false;
+  Future<void> _runSplashSequence() async {
+    // 1. Start animation
+    final animationFuture = _controller.forward();
 
-        if (mounted) {
-          Navigator.of(context).pushReplacement(
-            PageRouteBuilder(
-              pageBuilder:
-                  (context, animation, secondaryAnimation) =>
-                      onboardingComplete
-                          ? const HomeScreen()
-                          : const OnboardingScreen(),
-              transitionsBuilder: (
-                context,
-                animation,
-                secondaryAnimation,
-                child,
-              ) {
-                return FadeTransition(opacity: animation, child: child);
-              },
-              transitionDuration: const Duration(milliseconds: 400),
-            ),
-          );
-        }
-      }
-    });
+    // 2. Minimum delay to ensure logo is seen (2.5s total)
+    final delayFuture = Future.delayed(const Duration(milliseconds: 2500));
+
+    // 3. Check auth in parallel
+    final prefsFuture = SharedPreferences.getInstance();
+
+    await Future.wait([animationFuture, delayFuture]);
+    final prefs = await prefsFuture;
+
+    if (!mounted) return;
+
+    final onboardingComplete = prefs.getBool('onboarding_complete') ?? false;
+
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        pageBuilder:
+            (_, __, ___) =>
+                onboardingComplete
+                    ? const HomeScreen()
+                    : const OnboardingScreen(),
+        transitionsBuilder:
+            (_, animation, __, child) =>
+                FadeTransition(opacity: animation, child: child),
+        transitionDuration: const Duration(milliseconds: 500),
+      ),
+    );
   }
 
   @override

@@ -104,7 +104,10 @@ class _HomeScreenState extends State<HomeScreen> {
       builder:
           (context) => Container(
             padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
+              bottom:
+                  MediaQuery.of(context).viewInsets.bottom +
+                  MediaQuery.of(context).padding.bottom +
+                  16, // Added Safe Area + padding
             ),
             decoration: const BoxDecoration(
               color: Colors.white,
@@ -178,6 +181,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     height: 56,
                     child: ElevatedButton(
                       onPressed: () {
+                        // Unfocus before popping to be safe
+                        FocusManager.instance.primaryFocus?.unfocus();
                         Navigator.pop(context);
                         if (inputValue.isNotEmpty &&
                             !_contactIds.contains(inputValue) &&
@@ -209,6 +214,12 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
     );
+
+    // CRITICAL FIX: Ensure focus is cleared when sheet closes (even if by swipe/tap outside)
+    // This prevents the "crash after some time" due to lingering input connection
+    if (mounted) {
+      FocusManager.instance.primaryFocus?.unfocus();
+    }
   }
 
   Future<void> _showCallSheet() async {
