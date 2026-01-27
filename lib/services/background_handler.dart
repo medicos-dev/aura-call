@@ -13,6 +13,20 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 void onStart(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
 
+  // CRITICAL FIX: Promote to foreground immediately to prevent "ForegroundServiceDidNotStartInTimeException"
+  if (service is AndroidServiceInstance) {
+    service.on('setAsForeground').listen((event) {
+      service.setAsForegroundService();
+    });
+
+    service.on('setAsBackground').listen((event) {
+      service.setAsBackgroundService();
+    });
+
+    // Auto promote now
+    service.setAsForegroundService();
+  }
+
   // Initialize Supabase (with safety check)
   try {
     // Check if already initialized to prevent crash
@@ -37,16 +51,6 @@ void onStart(ServiceInstance service) async {
     android: initializationSettingsAndroid,
   );
   await flutterLocalNotificationsPlugin.initialize(initializationSettings);
-
-  if (service is AndroidServiceInstance) {
-    service.on('setAsForeground').listen((event) {
-      service.setAsForegroundService();
-    });
-
-    service.on('setAsBackground').listen((event) {
-      service.setAsBackgroundService();
-    });
-  }
 
   service.on('stopService').listen((event) {
     service.stopSelf();
