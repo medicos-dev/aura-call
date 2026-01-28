@@ -81,7 +81,7 @@ Future<void> _initializeCallId() async {
             await supabase
                 .from('profiles')
                 .select()
-                .eq('id', callId)
+                .eq('call_id', callId)
                 .maybeSingle();
 
         if (data != null) {

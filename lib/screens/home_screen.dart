@@ -260,11 +260,11 @@ class _HomeScreenState extends State<HomeScreen> {
     if (prefs.getBool('need_profile_sync') ?? true) {
       try {
         await _supabase.from('profiles').upsert({
-          'id': id,
+          'call_id': id,
           'username': name,
           'avatar_url': avatar,
           'last_seen': DateTime.now().toIso8601String(),
-        });
+        }, onConflict: 'call_id');
         await prefs.setBool('need_profile_sync', false);
       } catch (e) {
         debugPrint('Retry profile sync failed: $e');

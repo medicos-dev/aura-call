@@ -54,11 +54,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       await supabase
           .from('profiles')
           .upsert({
-            'id': callId,
+            'call_id': callId,
             'username': name,
             'avatar_url': avatarUrl,
             'last_seen': DateTime.now().toIso8601String(),
-          })
+          }, onConflict: 'call_id')
           .timeout(const Duration(seconds: 10));
     } catch (e) {
       debugPrint('Error updating profile: $e');
