@@ -93,7 +93,27 @@ Future<void> _initializeCallId() async {
             await prefs.setString('user_name', name);
             if (avatar != null) await prefs.setString('user_avatar', avatar);
             await prefs.setBool('onboarding_complete', true);
+            await prefs.setBool('need_profile_sync', false);
             print("Restored account for $name");
+
+            // Also restore contacts from cloud
+            try {
+              final contactsData = await supabase
+                  .from('contacts')
+                  .select('contact_id')
+                  .eq('owner_id', callId);
+
+              if (contactsData.isNotEmpty) {
+                final List<String> restoredContacts =
+                    contactsData
+                        .map<String>((c) => c['contact_id'] as String)
+                        .toList();
+                await prefs.setStringList('contacts', restoredContacts);
+                print("Restored ${restoredContacts.length} contacts");
+              }
+            } catch (contactErr) {
+              print("Error restoring contacts: $contactErr");
+            }
           }
         }
       } catch (e) {
