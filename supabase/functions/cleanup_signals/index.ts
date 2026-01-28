@@ -2,6 +2,7 @@
 // Runs every 20 minutes to delete abandoned signals
 // Preserves signals newer than 2 minutes (active calls)
 
+// @ts-ignore - Deno ESM import, valid at runtime in Supabase Edge Functions
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
