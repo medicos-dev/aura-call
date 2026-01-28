@@ -19,7 +19,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _supabase = Supabase.instance.client;
   final TextEditingController _callIdController = TextEditingController();
 
@@ -36,12 +36,22 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _callService = CallService();
     _initialize();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final service = FlutterBackgroundService();
+    service.invoke('app_lifecycle', {
+      'state': state == AppLifecycleState.resumed ? 'resumed' : 'paused',
+    });
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _callService.dispose();
     _callIdController.dispose();
     super.dispose();
@@ -94,6 +104,31 @@ class _HomeScreenState extends State<HomeScreen> {
       },
     );
     presence.connect();
+
+    // Check for pending call answer from background
+    final answeredFromBg = prefs.getBool('answered_from_background') ?? false;
+    if (answeredFromBg) {
+      await prefs.setBool('answered_from_background', false);
+      final callerId = prefs.getString('pending_caller_id');
+
+      if (callerId != null && callerId.isNotEmpty) {
+        // Navigate immediately to connected call screen
+        if (mounted) {
+          Navigator.of(context).push(
+            CupertinoPageRoute(
+              builder:
+                  (_) => CallOverlay(
+                    callService: _callService,
+                    remoteDisplayName: callerId,
+                    isVideoCall:
+                        true, // Default to video or check payload if possible
+                    answeredFromBackground: true,
+                  ),
+            ),
+          );
+        }
+      }
+    }
 
     // Re-enable Background Service hook
     await initializeService();
@@ -287,6 +322,25 @@ class _HomeScreenState extends State<HomeScreen> {
           callback: (payload) {
             // Reload contacts when someone (or background service) adds a contact for me
             _syncContacts(_myCallId);
+          },
+        )
+        .subscribe();
+
+    // Also listen for profile changes to update names in real-time
+    _supabase
+        .channel('public:profiles')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'profiles',
+          callback: (payload) {
+            // If a contact's name changed, refresh names
+            // Optimistic update: check if ID is in our contacts
+            final newRecord = payload.newRecord;
+            if (newRecord != null &&
+                _contactIds.contains(newRecord['call_id'])) {
+              _fetchContactNames([newRecord['call_id']]);
+            }
           },
         )
         .subscribe();

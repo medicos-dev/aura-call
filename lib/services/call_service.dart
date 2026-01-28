@@ -127,10 +127,14 @@ class CallService extends ChangeNotifier with WidgetsBindingObserver {
 
       switch (signal.type) {
         case 'ping':
-          // Only play sound if in foreground to avoid double-play with notification
+          // Play sound only in foreground (background handled by CallKit)
           if (_appState == AppLifecycleState.resumed) {
             await SoundService.playPing();
           }
+          // Determine call type from signal
+          final isVideo = signal.data['call_type'] == 'video';
+          _callType = isVideo ? CallType.video : CallType.audio;
+          _updateCallState(CallState.ringing);
           onIncomingCall?.call(
             signal.senderId,
             signal.data['name'] ?? 'Unknown',
@@ -384,7 +388,7 @@ class CallService extends ChangeNotifier with WidgetsBindingObserver {
     });
   }
 
-  /// Handle incoming answer
+  /// Handle incoming answer - Caller receives this when callee accepts
   Future<void> _handleAnswer(CallSignal signal) async {
     final participant = _participants[signal.senderId];
     if (participant?.peerConnection == null) return;
@@ -395,8 +399,11 @@ class CallService extends ChangeNotifier with WidgetsBindingObserver {
     );
     await participant!.peerConnection!.setRemoteDescription(answer);
 
+    // CRITICAL FIX: Stop ringing and immediately set to connected
+    // The WebRTC connection will finalize after ICE completes
     await SoundService.stopRing();
-    _updateCallState(CallState.connecting);
+    _updateCallState(CallState.connected);
+    await SoundService.playConnected();
   }
 
   /// Handle incoming ICE candidate

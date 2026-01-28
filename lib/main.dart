@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:crypto/crypto.dart';
+import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart'; // Added here
 import 'dart:io';
 
 import 'app_theme.dart';
@@ -130,8 +131,40 @@ Future<void> _initializeCallId() async {
   }
 }
 
-class AuraCallApp extends StatelessWidget {
+class AuraCallApp extends StatefulWidget {
   const AuraCallApp({super.key});
+
+  @override
+  State<AuraCallApp> createState() => _AuraCallAppState();
+}
+
+class _AuraCallAppState extends State<AuraCallApp> {
+  @override
+  void initState() {
+    super.initState();
+    _checkPendingCall();
+  }
+
+  Future<void> _checkPendingCall() async {
+    try {
+      // Check for active calls invoked from native side
+      final calls = await FlutterCallkitIncoming.activeCalls();
+      if (calls is List && calls.isNotEmpty) {
+        final lastCall = calls.last; // Map<String, dynamic>
+        // If there is an active call, we assume the user answered it or clicked it
+        // Verify acceptance?? The activeCalls usually returns current calls.
+        // If we are launching, we can assume we want to go there.
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('answered_from_background', true);
+        if (lastCall['id'] != null) {
+          await prefs.setString('pending_caller_id', lastCall['id']);
+        }
+      }
+    } catch (e) {
+      debugPrint("Error checking pending call: $e");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

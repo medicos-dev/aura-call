@@ -58,6 +58,17 @@ void onStart(ServiceInstance service) async {
 
   String? myCallId;
 
+  bool isAppInForeground = true;
+
+  service.on('app_lifecycle').listen((event) {
+    if (event != null && event['state'] != null) {
+      isAppInForeground = event['state'] == 'resumed';
+      print(
+        "Background Service: App lifecycle state changed to ${event['state']} (Foreground: $isAppInForeground)",
+      );
+    }
+  });
+
   service.on('init').listen((event) {
     if (event != null && event['call_id'] != null) {
       myCallId = event['call_id'];
@@ -81,6 +92,12 @@ void onStart(ServiceInstance service) async {
               final senderName = newRecord['data']['name'] ?? 'Someone';
 
               if (type == 'ping') {
+                // If app is in foreground, suppress notification (Main app handling sound)
+                if (isAppInForeground) {
+                  print("App in foreground, suppressing notification for ping");
+                  return;
+                }
+
                 // Trigger High Priority Notification
                 const AndroidNotificationDetails
                 androidPlatformChannelSpecifics = AndroidNotificationDetails(
@@ -90,6 +107,8 @@ void onStart(ServiceInstance service) async {
                   importance: Importance.max,
                   priority: Priority.high,
                   showWhen: true,
+                  sound: RawResourceAndroidNotificationSound('ping'),
+                  playSound: true,
                 );
                 const NotificationDetails platformChannelSpecifics =
                     NotificationDetails(
