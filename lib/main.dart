@@ -49,7 +49,11 @@ Future<void> _initializeCallId() async {
 
       if (Platform.isAndroid) {
         final androidInfo = await deviceInfo.androidInfo;
-        deviceId = androidInfo.id; // Unique ID for the device
+        // Use a combination of truly unique identifiers
+        // androidInfo.id is Build.ID which is NOT unique per device!
+        // Use fingerprint + display which vary between devices
+        deviceId =
+            '${androidInfo.fingerprint}_${androidInfo.display}_${androidInfo.host}';
       } else if (Platform.isIOS) {
         final iosInfo = await deviceInfo.iosInfo;
         deviceId =

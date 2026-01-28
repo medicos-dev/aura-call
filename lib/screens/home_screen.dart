@@ -299,6 +299,7 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
+        centerTitle: false,
         title: GestureDetector(
           onTap:
               () => Navigator.push(
