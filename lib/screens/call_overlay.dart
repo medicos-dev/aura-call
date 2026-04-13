@@ -191,7 +191,9 @@ class _CallOverlayState extends State<CallOverlay>
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     try {
       ProximitySensor.setProximityScreenOff(false);
-    } catch (e) {}
+    } catch (e) {
+      debugPrint('Screen off disabled failed: $e');
+    }
     _proximitySubscription?.cancel();
     _timer?.cancel();
     widget.callService.removeListener(_onServiceUpdate);
@@ -701,7 +703,6 @@ class _CallOverlayState extends State<CallOverlay>
             child: RTCVideoView(
               pipRenderer,
               mirror: pipRenderer == _localRenderer && _isFrontCamera,
-              mirror: pipRenderer == _localRenderer && (_isFrontCamera || !_isFrontCamera),
               objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
             ),
           ),
