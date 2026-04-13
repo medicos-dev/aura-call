@@ -27,31 +27,31 @@ class SoundService with WidgetsBindingObserver {
 
   static Future<void> playConnected() async {
     await _stopLoop();
-    await _player.play(AssetSource('call-connected.mp3'));
+    await _player.play(AssetSource('call-connected.ogg'));
   }
 
   static Future<void> playEnded() async {
     await _stopLoop();
-    await _player.play(AssetSource('call-ended.mp3'));
+    await _player.play(AssetSource('call-ended.ogg'));
   }
 
   static Future<void> playError() async {
     await _stopLoop();
-    await _player.play(AssetSource('error-busy-hung.mp3'));
+    await _player.play(AssetSource('error-busy-hung.ogg'));
   }
 
   static Future<void> playPing() async {
-    await _player.play(AssetSource('ping.mp3'));
+    await _player.play(AssetSource('ping.ogg'));
   }
 
   static Future<void> playSwitch() async {
-    await _player.play(AssetSource('switch-call.mp3'));
+    await _player.play(AssetSource('switch-call.ogg'));
   }
 
   static Future<void> startOutgoingRing() async {
     await _stopLoop();
     await _loopPlayer.setReleaseMode(ReleaseMode.loop);
-    await _loopPlayer.setSource(AssetSource('outgoing.mp3'));
+    await _loopPlayer.setSource(AssetSource('outgoing.ogg'));
     await _loopPlayer.resume();
   }
 
@@ -59,7 +59,7 @@ class SoundService with WidgetsBindingObserver {
     // Used when app is in foreground (CallKit handles background)
     await _stopLoop();
     await _loopPlayer.setReleaseMode(ReleaseMode.loop);
-    await _loopPlayer.setSource(AssetSource('incoming.mp3'));
+    await _loopPlayer.setSource(AssetSource('incoming.ogg'));
     await _loopPlayer.resume();
   }
 

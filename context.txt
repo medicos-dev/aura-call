@@ -1,0 +1,39 @@
+Project Overview: 
+Aura Call is a lightweight, intuitive, and privacy-first WebRTC VoIP (audio and video) calling application. 
+Why it exists: It aims to eliminate the friction of traditional communication apps by removing phone numbers, emails, and passwords from the onboarding flow. Instead, it generates a deterministic, anonymous 6-character "Call ID" based on the user's unique hardware footprint. This allows users to communicate instantly and securely while retaining their identity across app reinstalls without a traditional login.
+
+Core Features & How Things Work:
+- Frictionless Onboarding: Users simply open the app, provide a display name, and are instantly assigned a Call ID. No phone number verification is required.
+- Audio & Video Calling: Built on WebRTC (`flutter_webrtc`), allowing peer-to-peer, low-latency, high-quality audio and video streams between users natively.
+- The Ping System: A "Ping" is a lightweight notification. Users can tap a bell icon to push an instant, non-intrusive alert snippet to a friend, letting them know they are looking for them without initiating a full ringing call sequence.
+- Presence System: Real-time "Online" and "Offline" indicators (represented by green dots) let users know if their contacts are currently active in the app.
+- Contact Management & Caching: Users add friends using their 6-character Call IDs. The app seamlessly stores contacts in a local disk cache (`contact_cache_service`) so the UI loads instantly ("Instant UI Hydration") upon app launch, and then quietly syncs with the backend in the background. It also supports bidirectional adding (i.e. adding someone notifies them and adds you to their list).
+- Background Call Handling: Through `flutter_background_service` and `flutter_callkit_incoming`, the app runs a headless task to listen for calls even when the app is completely closed. When an incoming call arrives, it uses the OS's native Call UI (like iOS CallKit or Android's locked-screen call UI), making it feel like a real phone call.
+
+Current Progress: 
+- The entire WebRTC calling flow, presence, ping notifications, and background handling are implemented. 
+- The backend infrastructure has previously been heavily reliant on Supabase (PostgreSQL, Realtime Channels, Edge functions, and RPC for cleanup). 
+- Completely removed `supabase_flutter` from the project.
+- Mocked out `contact_cache_service`, `presence_service`, `cleanup_service`, and `background_handler` to work locally using dummy data and `Future.delayed`.
+- Implemented iOS-style Incoming Call screen with full background image coverage and green/red Accept/Decline Apple-style buttons.
+- Implemented WhatsApp-style Active Call screen with top-bar, hidden controls, 3D animated avatars, and a glassmorphism bottom control island.
+
+Active State: 
+Currently finalizing the UI overhaul locally. The frontend operates completely isolated using hardcoded dummy contexts. User Settings allows changing the Call Background. We are adjusting the UI layouts and preparing to introduce new sound effects for "video toggles" like WhatsApp.
+
+Next Steps:
+1. Verify the newly built Call Overlay UI and its transitions (Apple Incoming -> WhatsApp Active).
+2. Generate AI assets (Call backgrounds, sound effects).
+3. Test locally with dummy interactions.
+
+Known Issues/Technical Debt: 
+- Shifting to dummy data temporarily breaks actual multi-device calling, signaling, and presence.
+- A future roadmap item dictates migrating the signaling, presence, and contact storage to Cloudflare Workers / Durable Objects.
+
+---
+SUPABASE LOGIC REFERENCE (FOR FUTURE CLOUDFLARE MIGRATION)
+- Profiles (`profiles` table): Kept `call_id` (PK), `username`, `avatar_url`, `last_seen`.
+- Contacts (`contacts` table): `owner_id`, `contact_id`. Joined query fetched contact names and avatars.
+- Signals (`signals` table): Kept `id`, `sender_id`, `receiver_id`, `type` ('ping', 'contact_add', 'offer', 'answer', 'ice', 'reject', 'hangup'), `data` (JSON), `status` ('active', 'processed').
+- Channels used: `signals:$myCallId` for WebRTC, `online_users` for presence sync.
+- Cleanup: Supabase RPC `run_signal_cleanup` ran via app polling to delete old signals.

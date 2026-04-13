@@ -2,10 +2,11 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../widgets/app_toast.dart';
 import '../services/background_handler.dart';
 import '../services/call_service.dart';
+import '../services/contact_cache_service.dart';
 import '../services/presence_service.dart';
 import '../services/sound_service.dart';
 import '../widgets/add_contact_sheet.dart';
@@ -20,7 +21,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
-  final _supabase = Supabase.instance.client;
   final TextEditingController _callIdController = TextEditingController();
 
   String _myCallId = '';
@@ -70,34 +70,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final storedAvatar = prefs.getString('user_avatar') ?? '';
     List<String> contacts = prefs.getStringList('contacts') ?? [];
 
+    // Instant Hydrated UI: Load names from cache immediately
+    final cacheService = ContactCacheService();
+    final cachedNames = <String, String>{};
+    for (final id in contacts) {
+      cachedNames[id] = cacheService.getDisplayName(id);
+    }
+
     setState(() {
       _myCallId = storedId;
       _userName = storedName;
       _avatarUrl = storedAvatar;
       _contactIds = contacts;
+      _contactNames = cachedNames; // Instant display from cache
       _isLoading = false;
     });
 
-    // Sync contacts from cloud
+    // Sync contacts from local dummy proxy
     if (storedId.isNotEmpty) {
-      _syncProfileIfNeeded(
-        storedId,
-        storedName,
-        storedAvatar,
-      ); // Self-heal profile
       await _syncContacts(storedId);
-      _subscriptionContacts(); // Listen for new contacts (Bidirectional)
-    }
-
-    // Fetch names for contacts
-    if (contacts.isNotEmpty) {
-      await _fetchContactNames(contacts);
     }
 
     await _callService.initialize();
 
     final presence = PresenceService(
-      supabase: _supabase,
       myCallId: _myCallId,
       onOnlineUsersUpdated: (ids) {
         setState(() => _onlineUserIds = ids);
@@ -160,20 +156,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _saveContact(String newId) async {
+    // Dummy Data Sync
     setState(() => _contactIds.add(newId));
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('contacts', _contactIds);
     await _fetchContactNames([newId]);
-
-    // Cloud sync
-    try {
-      await _supabase.from('contacts').upsert({
-        'owner_id': _myCallId,
-        'contact_id': newId,
-      });
-    } catch (e) {
-      debugPrint('Error saving contact to cloud: $e');
-    }
   }
 
   void _startCall(String targetId, bool video) async {
@@ -202,78 +189,36 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _sendPing(String targetId) async {
-    // SoundService.playPing(); // Removed self-play as per user feedback
-    await _supabase.from('signals').insert({
-      'sender_id': _myCallId,
-      'receiver_id': targetId,
-      'type': 'ping',
-      'status': 'active',
-      'data': {'name': _userName},
-    });
-
+    // Dummy Data Ping - Do nothing technically, just visually show success
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Ping sent to $targetId'),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          backgroundColor: const Color(0xFF128C7E),
-        ),
-      );
+      AppToast.show(context, 'Ping sent to $targetId', type: AppToastType.success);
     }
   }
 
   Future<void> _sendContactAddSignal(String targetId) async {
-    await _supabase.from('signals').insert({
-      'sender_id': _myCallId,
-      'receiver_id': targetId,
-      'type': 'contact_add',
-      'data': {'name': _userName},
-    });
+    // Dummy - Do nothing
   }
 
   Future<void> _syncContacts(String myId) async {
-    try {
-      final response = await _supabase
-          .from('contacts')
-          .select('contact_id')
-          .eq('owner_id', myId);
-
-      final cloudContacts =
-          (response as List).map((e) => e['contact_id'] as String).toList();
-      final localContacts = _contactIds;
-
-      // Merge unique
-      final allContacts = {...localContacts, ...cloudContacts}.toList();
-
-      if (allContacts.length > localContacts.length) {
-        setState(() => _contactIds = allContacts);
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setStringList('contacts', allContacts);
-
-        // Fetch names for new merged list
-        await _fetchContactNames(allContacts);
-      } else if (localContacts.isNotEmpty) {
-        await _fetchContactNames(localContacts);
-      }
-    } catch (e) {
-      debugPrint('Error syncing contacts: $e');
-    }
+    // Dummy data fetch through cache service
+    final fetchedContacts = await ContactCacheService().refreshContacts(myId);
+    
+    // Merge
+    final allContacts = {..._contactIds, ...fetchedContacts}.toList();
+    setState(() => _contactIds = allContacts);
+    
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('contacts', allContacts);
+    
+    await _fetchContactNames(allContacts);
   }
 
   Future<void> _fetchContactNames(List<String> ids) async {
     if (ids.isEmpty) return;
     try {
-      final response = await _supabase
-          .from('profiles')
-          .select('id, username')
-          .inFilter('id', ids);
-
       final names = <String, String>{};
-      for (final row in response) {
-        names[row['id'] as String] = row['username'] as String? ?? 'Unknown';
+      for (final id in ids) {
+        names[id] = ContactCacheService().getDisplayName(id);
       }
 
       if (mounted) {
@@ -284,66 +229,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } catch (e) {
       debugPrint('Error fetching contact names: $e');
     }
-  }
-
-  Future<void> _syncProfileIfNeeded(
-    String id,
-    String name,
-    String avatar,
-  ) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool('need_profile_sync') ?? true) {
-      try {
-        await _supabase.from('profiles').upsert({
-          'call_id': id,
-          'username': name,
-          'avatar_url': avatar,
-          'last_seen': DateTime.now().toIso8601String(),
-        }, onConflict: 'call_id');
-        await prefs.setBool('need_profile_sync', false);
-      } catch (e) {
-        debugPrint('Retry profile sync failed: $e');
-      }
-    }
-  }
-
-  void _subscriptionContacts() {
-    _supabase
-        .channel('public:contacts')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'contacts',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'owner_id',
-            value: _myCallId,
-          ),
-          callback: (payload) {
-            // Reload contacts when someone (or background service) adds a contact for me
-            _syncContacts(_myCallId);
-          },
-        )
-        .subscribe();
-
-    // Also listen for profile changes to update names in real-time
-    _supabase
-        .channel('public:profiles')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'profiles',
-          callback: (payload) {
-            // If a contact's name changed, refresh names
-            // Optimistic update: check if ID is in our contacts
-            final newRecord = payload.newRecord;
-            if (newRecord != null &&
-                _contactIds.contains(newRecord['call_id'])) {
-              _fetchContactNames([newRecord['call_id']]);
-            }
-          },
-        )
-        .subscribe();
   }
 
   @override
@@ -417,12 +302,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ],
           ),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(CupertinoIcons.search, color: Color(0xFF128C7E)),
-            onPressed: () {},
-          ),
-        ],
+        actions: const [],
       ),
       body:
           _isLoading
@@ -546,9 +426,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                     children: [
                                       CircleAvatar(
                                         radius: 28,
+                                        backgroundColor: Colors.grey.shade200,
                                         backgroundImage: NetworkImage(
-                                          'https://ui-avatars.com/api/?name=${Uri.encodeComponent(name)}&background=random&size=128',
+                                          'https://api.dicebear.com/9.x/adventurer/png?seed=${Uri.encodeComponent(name)}',
                                         ),
+                                        child: null,
                                       ),
                                       if (isOnline)
                                         Positioned(

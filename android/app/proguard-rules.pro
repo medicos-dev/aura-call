@@ -14,8 +14,7 @@
 # Flutter Background Service
 -keep class id.flutter.flutter_background_service.** { *; }
 
-# Supabase
--keep class io.supabase.** { *; }
+
 
 # General
 -keepattributes Signature

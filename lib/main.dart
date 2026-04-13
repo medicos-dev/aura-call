@@ -1,16 +1,17 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:crypto/crypto.dart';
-import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart'; // Added here
 import 'dart:io';
 
 import 'app_theme.dart';
 import 'screens/splash_screen.dart';
 import 'services/cleanup_service.dart';
+import 'services/navigator_service.dart';
+import 'services/contact_cache_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,15 +22,11 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
-  // Initialize Supabase
-  await Supabase.initialize(
-    url: 'https://luzazzyqihpertxteokq.supabase.co',
-    anonKey:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1emF6enlxaWhwZXJ0eHRlb2txIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkzMDE2MzMsImV4cCI6MjA4NDg3NzYzM30.hkCVI2w5Hx9gIhdKh53u-JrFWB3oXuOEf6ZkQzAIRu0',
-  );
-
   // Generate or retrieve user call ID (Deterministic)
   await _initializeCallId();
+
+  // Load contact cache from disk for instant hydrated UI
+  await ContactCacheService().loadFromDisk();
 
   // Start the cleanup service (runs every 20 minutes)
   CleanupService().start();
@@ -67,7 +64,7 @@ Future<void> _initializeCallId() async {
       // Actually, base32 of sha256 is better.
       // For simplicity and readability matching previous: 6 UPPERCASE alphanum.
 
-      final bytes = utf8.encode(deviceId + "AURA_SALT_V1");
+      final bytes = utf8.encode('${deviceId}AURA_SALT_V1');
       final digest = sha256.convert(bytes);
       // Take first 4 bytes -> 8 hex chars. truncate to 6.
       String hex = digest.toString().toUpperCase();
@@ -76,57 +73,13 @@ Future<void> _initializeCallId() async {
       // But Hex (0-F) is fine for "Codes".
       callId = hex.substring(0, 6);
 
-      print("Device ID: $deviceId -> Generated Call ID: $callId");
+      // Account restore mock (Supabase removed)
+      // Usually we would fetch profile from backend here.
+      // For dummy frontend, we assume the local cache is all we need.
+      debugPrint("Device ID: $deviceId -> Generated Call ID: $callId");
       await prefs.setString('call_id', callId);
-
-      // RESTORE CHECK: Does this ID exist in Supabase?
-      final supabase = Supabase.instance.client;
-      try {
-        final data =
-            await supabase
-                .from('profiles')
-                .select()
-                .eq('call_id', callId)
-                .maybeSingle();
-
-        if (data != null) {
-          // Account exists! Restore it.
-          final name = data['username'] as String?;
-          final avatar = data['avatar_url'] as String?;
-
-          if (name != null) {
-            await prefs.setString('user_name', name);
-            if (avatar != null) await prefs.setString('user_avatar', avatar);
-            await prefs.setBool('onboarding_complete', true);
-            await prefs.setBool('need_profile_sync', false);
-            print("Restored account for $name");
-
-            // Also restore contacts from cloud
-            try {
-              final contactsData = await supabase
-                  .from('contacts')
-                  .select('contact_id')
-                  .eq('owner_id', callId);
-
-              if (contactsData.isNotEmpty) {
-                final List<String> restoredContacts =
-                    contactsData
-                        .map<String>((c) => c['contact_id'] as String)
-                        .toList();
-                await prefs.setStringList('contacts', restoredContacts);
-                print("Restored ${restoredContacts.length} contacts");
-              }
-            } catch (contactErr) {
-              print("Error restoring contacts: $contactErr");
-            }
-          }
-        }
-      } catch (e) {
-        print("Error checking for existing account: $e");
-      }
     } catch (e) {
-      // Fallback
-      callId = 'ERR000'; // Should not happen
+      callId = 'ERR000';
     }
   }
 }
@@ -146,23 +99,11 @@ class _AuraCallAppState extends State<AuraCallApp> {
   }
 
   Future<void> _checkPendingCall() async {
-    try {
-      // Check for active calls invoked from native side
-      final calls = await FlutterCallkitIncoming.activeCalls();
-      if (calls is List && calls.isNotEmpty) {
-        final lastCall = calls.last; // Map<String, dynamic>
-        // If there is an active call, we assume the user answered it or clicked it
-        // Verify acceptance?? The activeCalls usually returns current calls.
-        // If we are launching, we can assume we want to go there.
-
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool('answered_from_background', true);
-        if (lastCall['id'] != null) {
-          await prefs.setString('pending_caller_id', lastCall['id']);
-        }
-      }
-    } catch (e) {
-      debugPrint("Error checking pending call: $e");
+    // Dummy Mode - Check pending calls locally
+    final prefs = await SharedPreferences.getInstance();
+    final answered = prefs.getBool('answered_from_background') ?? false;
+    if (answered) {
+      // route appropriately
     }
   }
 
@@ -172,6 +113,7 @@ class _AuraCallAppState extends State<AuraCallApp> {
       title: 'AURA CALL',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
+      navigatorKey: NavigatorService().navigatorKey,
       home: const SplashScreen(),
     );
   }
